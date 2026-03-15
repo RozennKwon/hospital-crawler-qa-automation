@@ -172,7 +172,8 @@ def get_period_from_detail(driver, timeout=15):
     return "기간정보_없음"
 
 # --- 데이터 저장 및 중복 제거 로직 ---
-SEEN_CSV = "seen_posts.csv"
+# 수정 후 (폴더 경로를 명시해줌)
+SEEN_CSV = os.path.join("top-hospitals", "seen_posts.csv")
 
 
 def _fingerprint_row(row):
