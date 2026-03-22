@@ -1553,5 +1553,6 @@ if __name__ == "__main__":
         save_workbook_consolidated(per_hospital, out_path=f"간호사_통합_결과_{ts}.xlsx")
         
         if errors:
-            pd.DataFrame(errors).to_csv(f"error_log_{ts}.csv", index=False)
+            # 📝 한글 깨짐 방지(utf-8-sig) 옵션 추가
+            pd.DataFrame(errors).to_csv(f"error_log_{ts}.csv", index=False, encoding='utf-8-sig')
             print(f"⚠️ 에러 로그 저장 완료: error_log_{ts}.csv")
