@@ -309,45 +309,34 @@ def save_workbook_consolidated(per_hospital, out_path):
 
 # --- Group 1 ---
 def run_seoul_asan(drv):
-    """
-    [Public] 서울아산병원 채용 공고 크롤러
-    - 목적: 간호사 채용 공고 데이터 수집 및 파싱
-    - QA Note: 현재 이 함수는 RiaT(데이터 품질 검증) 파이프라인의 
-      결함 주입(Fault Injection) 테스트를 위해 임시로 수정되어 있습니다.
-    """
     hospital = "서울아산병원"
     url = "https://recruit.amc.seoul.kr/recruit/career/list.do?codeFirst=T04005&codeTwo=T04005002"
     rows = []
     
+    # 페이지 이동 및 대기
     drv.get(url)
     wait_ready(drv)
     
+    # 공고 리스트 추출
     items = drv.find_elements(By.CSS_SELECTOR, "ul.dayListBox > li")
+    
     for item in items:
         try:
-            # 1. 제목 파싱 및 필터링
+            # 제목 추출 및 필터링
             title = item.find_element(By.CSS_SELECTOR, "div.dayListTitle span").text.strip()
             if "간호사" not in title: 
                 continue
             
-            # =====================================================================
-            # 🚨 [QA/Fault Injection] 네거티브 테스트를 위한 고의적 결함 주입
-            # 목적: RiaT 게이트웨이의 Safety(개인정보 필터링) 기능 정상 작동 여부 검증
-            # 설명: 정상적으로 수집된 공고 제목에 가상의 개인 전화번호 패턴을 결합합니다.
-            # (※ 테스트 완료 후 프로덕션 배포 시 반드시 주석 처리 혹은 삭제 요망)
-            # =====================================================================
-            title = title + " (문의: 010-1234-5678)"
-            
-            # 2. 기간 및 링크 파싱
+            # 기간 및 링크 추출
             period = item.find_element(By.CSS_SELECTOR, "div.dayListTitle2 span").text.strip()
             onclick = item.find_element(By.CSS_SELECTOR, "div.dayListTitle a").get_attribute("onclick") or ""
             m2 = re.search(r"fnDetail\('(\d+)'", onclick)
             link = f"https://recruit.amc.seoul.kr/recruit/career/view.do?recruitNo={m2.group(1)}" if m2 else ""
             
-            # 3. 표준 포맷(std_row)으로 데이터 적재
+            # 데이터 추가
             rows.append(std_row(hospital, title, period, link))
             
-        except Exception as e:
+        except Exception: 
             continue
             
     return df_std(rows)
