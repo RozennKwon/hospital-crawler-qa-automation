@@ -474,10 +474,17 @@ def run_kuh(drv):
     return df_std(rows)
 
 def run_smc_changwon(drv):
+    # 🕵️‍♂️ GitHub Actions 환경인지 체크 (os.getenv 활용)
+    if os.getenv('GITHUB_ACTIONS') == 'true':
+        print("⏭️ [SKIP] 삼성창원병원은 깃허브 보안 정책(해외 IP 차단)상 수집 불가 (로컬 전용)")
+        # 텅 빈 데이터프레임을 돌려줘서 에러 없이 다음 병원으로 넘어가게 함
+        return df_std([]) 
+    
     hospital = "삼성창원병원"
     url = "https://smc.skku.edu/recruit/recruit/recruitInfo/list.do?mId=42&schPosition=C1N"
     rows = []
     
+    # 여기서부터는 실제 크롤링 로직 (로컬에서만 실행됨)
     drv.get(url)
     wait_ready(drv)
     
@@ -497,6 +504,7 @@ def run_smc_changwon(drv):
             rows.append(std_row(hospital, title, period, link))
         except Exception: 
             continue
+            
     return df_std(rows)
 
 def run_yuhs(drv):

@@ -77,35 +77,7 @@ top-hospitals/
 
 ---
 
----
-
-### 🛠️ 문제 해결 및 최적화 기록 (Troubleshooting)
-> **개발 과정에서 마주한 이슈를 QA 관점에서 분석하고 해결한 기록입니다.**
-
-* **환경 간 경로 이식성 확보 (Path Optimization)**
-    * **Issue:** 로컬 개발 환경과 GitHub Actions 가상 서버의 파일 경로 차이로 인한 실행 에러 발생.
-    - **Solution:** `os.path`를 활용한 상대 경로 동적 생성 로직을 도입하여 환경에 무관한 안정적 실행 구조 구축.
-
-* **데이터 정합성 및 중복 관리 자동화**
-    - **Issue:** 반복 수집 시 발생하는 데이터 중복 문제 및 수동 관리의 한계.
-    - **Solution:** `seen_posts.csv`를 활용한 히스토리 관리 시스템과 GitHub Actions의 자동 커밋 기능을 연동하여 **데이터 영속성** 확보.
-
-* **보안 및 환경 격리 (Environment Hygiene)**
-    - **Issue:** 불필요한 빌드 파일 및 민감한 결과물이 저장소에 포함되어 관리 복잡도 증가.
-    - **Solution:** `.gitignore` 정교화를 통해 소스 코드와 데이터 산출물을 명확히 분리하고 관리 효율성 증대.
-
----
-
-### 📊 QA Workflow (검증 프로세스)
-1. **Trigger:** 매일 오전 9시(KST) GitHub Actions 스케줄러 자동 실행
-2. **Scraping:** Selenium 기반 병원별 채용 페이지 동적 데이터 수집
-3. **QA Validation:** **RaiT** 로직을 통한 데이터 무결성(Integrity) 검사
-4. **Deduplication:** `seen_posts.csv` 대조를 통한 중복 공고 필터링
-5. **Auto-Update:** 검증 완료된 신규 데이터를 레포지토리에 자동 커밋 & 푸시
-6. **Reporting:** 최종 엑셀 결과물 및 에러 로그 아카이빙 (GitHub Artifacts)
-
----
-
-### 💡 기대 효과
-* **업무 효율성:** 수동 확인 대비 **약 95% 이상의 시간 절감** 효과
-* **데이터 신뢰도:** RaiT 검증 및 중복 필터링을 통한 **클린 데이터(Clean Data)** 확보
+## ⚠️ Known Issues & Limitations
+* **삼성창원병원(SMC Changwon):** 해당 사이트는 강화된 보안 정책으로 인해 GitHub Actions(Ubuntu/해외 IP) 환경에서의 접근을 차단합니다. 
+  * 해당 병원의 데이터 수집이 필요한 경우, **로컬 환경**에서 직접 실행하는 것을 권장합니다.
+  * CI/CD 파이프라인에서는 안정성을 위해 해당 타겟을 자동으로 스킵(Skip)하도록 설정되어 있습니다.
