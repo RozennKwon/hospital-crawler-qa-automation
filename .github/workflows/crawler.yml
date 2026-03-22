@@ -1,0 +1,57 @@
+name: 일일 병원 채용공고 QA 크롤러 파이프라인
+
+on:
+  schedule:
+    # 매일 한국 시간 오전 9시(UTC 0시) 정기 데이터 수집
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    # 수동 실행 버튼 (Ad-hoc QA 테스트 및 디버깅용)
+
+jobs:
+  run-crawler-and-qa:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 저장소 코드 불러오기 (Checkout)
+      uses: actions/checkout@v4
+      with:
+        # seen_posts.csv의 변경 사항을 정확히 추적하기 위해 전체 히스토리 가져오기
+        fetch-depth: 0 
+
+    - name: 파이썬 환경 설정 (Python 3.10)
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: 필요 패키지 설치 (Dependencies)
+      run: |
+        python -m pip install --upgrade pip
+        pip install pandas selenium webdriver-manager openpyxl
+
+    - name: 크롤러 실행 및 RaiT 데이터 검증 게이트웨이 통과
+      run: |
+        # 메인 프로젝트 폴더로 이동
+        cd top-hospitals
+        # 자동화 스크래퍼 및 데이터 품질 검사(QA) 실행
+        python main.py
+
+    - name: CI/CD 자동화 - 검증 완료된 데이터 커밋 및 푸시 (seen_posts.csv)
+      run: |
+        # GitHub Actions 봇 계정 설정
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action Bot"
+        
+        # 중복 방지용 데이터베이스(seen_posts) 변경사항 장바구니에 담기
+        git add top-hospitals/seen_posts.csv
+        
+        # QA 게이트웨이를 무사히 통과하여 새로 추가된 데이터가 있을 때만 커밋/푸시 진행
+        git diff --quiet && git diff --staged --quiet || (git commit -m "ci: RaiT 검증 완료된 신규 채용공고 seen_posts.csv 업데이트" && git push)
+
+    - name: QA 검증 결과 및 에러 로그 아카이빙 (Artifacts)
+      uses: actions/upload-artifact@v4
+      with:
+        name: QA_Crawler_Artifacts
+        # 수동 QA 리뷰를 위해 엑셀 리포트와 에러 로그를 깃허브에 보관
+        path: |
+          top-hospitals/*.xlsx
+          top-hospitals/error_log_*.csv
