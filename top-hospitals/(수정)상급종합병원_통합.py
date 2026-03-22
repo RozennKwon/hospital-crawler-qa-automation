@@ -175,6 +175,36 @@ def get_period_from_detail(driver, timeout=15):
 # 수정 후 (폴더 경로를 명시해줌)
 SEEN_CSV = os.path.join("top-hospitals", "seen_posts.csv")
 
+def verify_rait_compliance(row):
+    """
+    RaiT 관점의 데이터 품질 및 책임성 검증
+    판단 후 Series 객체 반환 -> DataFrame에 새로운 컬럼으로 바로 맵핑됨
+    """
+    title = safe_str(row.get("제목"))
+    period = safe_str(row.get("모집기간"))
+    
+    reasons = []
+    
+    # 1. Safety: 개인정보(핸드폰 번호 등) 노출 필터링
+    if re.search(r"010-\d{4}-\d{4}", title):
+        reasons.append("Safety(개인정보의심)")
+        
+    # 2. Reliability: 크롤링 누락/에러 필터링 (제목이 너무 짧거나 비정상적인 경우)
+    if not title or len(title) < 2 or title == "제목 없음":
+        reasons.append("Reliability(제목누락)")
+        
+    # 3. Accuracy: 할루시네이션(엉뚱한 연도 등) 체크
+    year_match = re.search(r"20\d{2}", period)
+    if year_match:
+        year = int(year_match.group())
+        # 2024~2027년 사이가 아니면 크롤링 에러 혹은 예전 공고로 간주
+        if year < 2024 or year > 2027:
+            reasons.append("Accuracy(연도오류)")
+            
+    if not reasons:
+        return pd.Series(["PASS", "Normal"])
+    else:
+        return pd.Series(["FAIL", " | ".join(reasons)])
 
 def _fingerprint_row(row):
     """링크 또는 (병원+제목+기간) 기반 해시 fingerprint 생성."""
@@ -215,45 +245,54 @@ def _save_seen(new_fps):
 
 
 def save_workbook_consolidated(per_hospital, out_path):
-    """통합 엑셀 저장 함수 (데이터 유실 방지 로직 보강)"""
+    """통합 엑셀 저장 함수 (RaiT 품질 검증 게이트웨이 추가)"""
     merged_parts = []
     
     for hosp, df in per_hospital.items():
         if df is not None and not df.empty:
             df2 = df.copy()
-            
-            # **[수정 1] 병원명 필드가 비어있더라도 강제로 할당**
-            # 병원 필드가 없는 경우/모든 값이 비어있는 경우, 현재 병원 이름으로 채움
+            # 병원명 필드가 비어있더라도 강제로 할당
             if "병원" not in df2.columns or df2["병원"].eq("").all(): 
                 df2["병원"] = hosp
-                
             merged_parts.append(df2[["병원","제목","모집기간","링크"]])
     
     merged = pd.concat(merged_parts, ignore_index=True) if merged_parts else pd.DataFrame(columns=["병원","제목","모집기간","링크"])
     
-    # **[수정 2] 내부 중복 제거 로직 비활성화 (데이터 유실 방지를 위해)**
-    # 이 로직을 비활성화하고, _key 생성 로직을 제거하여 유실 가능성을 없앱니다.
+    # =========================================================
+    # 🛡️ [RaiT 통합] 데이터 품질 일괄 검증
+    # =========================================================
+    if not merged.empty:
+        merged[["RaiT상태", "RaiT사유"]] = merged.apply(verify_rait_compliance, axis=1)
+    else:
+        merged["RaiT상태"] = []
+        merged["RaiT사유"] = []
     
-    # 신규/기존 판별 로직은 그대로 유지합니다.
+    # 신규/기존 판별 로직
     seen = _load_seen()
     merged["fingerprint"] = merged.apply(_fingerprint_row, axis=1)
-    # merged["_key"] = merged["제목"].astype(str) + merged["링크"].astype(str) # 삭제
     merged["상태"] = merged["fingerprint"].apply(lambda x: "기존" if x in seen else "신규")
     
     df_new = merged[merged["상태"]=="신규"].copy()
     
-    # 신규 건 seen 업데이트
-    if not df_new.empty:
-        _save_seen(df_new["fingerprint"].tolist())
+    # =========================================================
+    # 🛡️ [RaiT 게이트키퍼] 합격한 신규 데이터만 seen_posts.csv에 저장
+    # =========================================================
+    # FAIL된 데이터는 불량으로 간주하여 seen에 기록하지 않음 -> 다음 실행 시 재수집 시도
+    df_new_pass = df_new[df_new["RaiT상태"] == "PASS"]
+    if not df_new_pass.empty:
+        _save_seen(df_new_pass["fingerprint"].tolist())
 
-    # 엑셀 쓰기 (나머지 로직은 유지)
+    # 엑셀 쓰기
     with pd.ExcelWriter(out_path, engine="openpyxl") as w:
-        # **[수정 3] 중복 제거 없이 전체 데이터를 통합전체 시트에 씁니다.**
-        merged.drop_duplicates(subset=["fingerprint"], inplace=True) # 중복 제거 로직을 fingerprint 기반으로 변경 (안전함)
+        merged.drop_duplicates(subset=["fingerprint"], inplace=True) 
         merged.to_excel(w, index=False, sheet_name="통합전체") 
         df_new.to_excel(w, index=False, sheet_name="미등록_신규")
         
-        # ... (요약 시트 및 병원별 시트 로직은 유지)
+        # QA를 위한 별도 시트: RaiT 검증에서 탈락한 불량 데이터 모음
+        df_fail = merged[merged["RaiT상태"] == "FAIL"]
+        if not df_fail.empty:
+            df_fail.to_excel(w, index=False, sheet_name="RaiT_검증실패(QA용)")
+            
         if not merged.empty:
             merged.groupby("병원").size().reset_index(name="건수").sort_values("건수", ascending=False).to_excel(w, index=False, sheet_name="요약")
 
@@ -262,7 +301,7 @@ def save_workbook_consolidated(per_hospital, out_path):
                 df.to_excel(w, index=False, sheet_name=safe_sheet(hosp))
                 
     print(f"\n💾 엑셀 저장 완료: {out_path}")
-    print(f"📊 전체: {len(merged)}건 | ✨ 신규: {len(df_new)}건")
+    print(f"📊 전체: {len(merged)}건 | ✨ 신규: {len(df_new)}건 | 🚨 RaiT 실패: {len(merged[merged['RaiT상태']=='FAIL'])}건")
 
 # ==============================================================================
 # [2] 크롤링 함수 (Refactored: drv 인자 사용, 자체 driver 생성 제거)
